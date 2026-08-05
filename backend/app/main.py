@@ -1,14 +1,26 @@
 from fastapi import FastAPI
 
+from app.api import auth
+from app.config.settings import settings
+from app.database.database import Base, engine
+from app.database import base
+
+# Create all database tables
+Base.metadata.create_all(bind=engine)
+
 app = FastAPI(
-    title="MiraiDesk AI",
-    description="AI Workplace Assistant for Japanese Companies",
-    version="0.1.0"
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION
 )
 
+# Register API routes
+app.include_router(auth.router)
+
+
 @app.get("/")
-def home():
+def root():
     return {
-        "message": "Welcome to MiraiDesk AI 🚀",
-        "status": "Backend Running Successfully"
+        "message": f"Welcome to {settings.APP_NAME}",
+        "version": settings.APP_VERSION,
+        "environment": settings.ENVIRONMENT
     }
