@@ -10,7 +10,10 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title=settings.APP_NAME,
-    version=settings.APP_VERSION
+    version=settings.APP_VERSION,
+    swagger_ui_parameters={
+        "persistAuthorization": True
+    }
 )
 
 # Register API routes
