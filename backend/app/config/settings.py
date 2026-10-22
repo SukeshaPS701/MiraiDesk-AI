@@ -1,3 +1,4 @@
+
 from dotenv import load_dotenv
 import os
 
@@ -11,6 +12,9 @@ class Settings:
     APP_VERSION = os.getenv("APP_VERSION")
     ENVIRONMENT = os.getenv("ENVIRONMENT")
 
+    # Logging
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
     # Database
     DB_HOST = os.getenv("DB_HOST")
     DB_PORT = os.getenv("DB_PORT")
@@ -20,7 +24,8 @@ class Settings:
 
     # Full Database URL
     DATABASE_URL = (
-        f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+        f"postgresql://{DB_USER}:{DB_PASSWORD}@"
+        f"{DB_HOST}:{DB_PORT}/{DB_NAME}"
     )
 
     # Security
