@@ -177,3 +177,49 @@ def test_successful_chat_saves_both_messages(monkeypatch: pytest.MonkeyPatch):
     # Verify both messages are refreshed.
     db.refresh.assert_any_call(user_message)
     db.refresh.assert_any_call(assistant_message)
+
+def test_chat_rejects_conversation_not_owned_by_user(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A user cannot chat in a conversation they do not own."""
+
+    db = Mock()
+
+    # The ownership lookup returns no conversation for this user.
+    get_conversation_mock = Mock(return_value=None)
+
+    monkeypatch.setattr(
+        chat_module,
+        "get_conversation",
+        get_conversation_mock,
+    )
+
+    # Track whether any chat messages are saved.
+    add_message_mock = Mock()
+
+    monkeypatch.setattr(
+        chat_module,
+        "add_message",
+        add_message_mock,
+    )
+
+    service = ChatService()
+
+    # The service must reject the request before processing messages.
+    result = service.chat(
+        db=db,
+        conversation_id=13,
+        user_id=999,
+        message="Read someone else's conversation.",
+    )
+
+    assert result is None
+
+    get_conversation_mock.assert_called_once_with(
+        db,
+        13,
+        999,
+    )
+
+    add_message_mock.assert_not_called()
+    db.commit.assert_not_called()

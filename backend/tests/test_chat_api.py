@@ -1,5 +1,6 @@
 
 from unittest.mock import Mock
+from app.dependencies.auth import get_current_user
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -235,3 +236,66 @@ def test_validation_error_response_has_expected_structure():
     assert data["error"]["message"] == "Request validation failed."
     assert isinstance(data["error"]["details"], list)
     assert len(data["error"]["details"]) > 0
+
+def create_auth_test_app():
+    """Create an isolated app using the real auth dependency."""
+
+    app = FastAPI()
+    app.include_router(chat_module.router)
+
+    app.dependency_overrides[
+        chat_module.get_db
+    ] = lambda: Mock()
+
+    return app
+
+
+def test_chat_api_without_token_returns_401():
+    """Requests without a bearer token are rejected."""
+
+    app = create_auth_test_app()
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/chat/",
+            json={
+                "conversation_id": 13,
+                "message": "Hello!",
+            },
+        )
+
+    assert response.status_code == 401
+
+
+def test_auth_user_not_found_returns_401(monkeypatch):
+    """A valid token for an unknown user is rejected."""
+
+    from app.dependencies import auth as auth_module
+
+    db = Mock()
+    db.query.return_value.filter.return_value.first.return_value = None
+
+    app = create_auth_test_app()
+
+    app.dependency_overrides[
+        chat_module.get_db
+    ] = lambda: db
+
+    monkeypatch.setattr(
+        auth_module,
+        "verify_access_token",
+        lambda token: "missing@example.com",
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/chat/",
+            headers={"Authorization": "Bearer test-token"},
+            json={
+                "conversation_id": 13,
+                "message": "Hello!",
+            },
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "User not found"}
