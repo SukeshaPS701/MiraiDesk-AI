@@ -1,7 +1,8 @@
 
-import pytest
-
+from datetime import timedelta
 from unittest.mock import patch
+
+import pytest
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -12,6 +13,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database.database import Base
 from app.database.session import get_db as session_get_db
+from app.core.security import create_access_token
 
 from app.api.auth import router as auth_router
 from app.api.conversations import router as conversations_router
@@ -173,6 +175,52 @@ def test_profile_rejects_invalid_token(client):
     assert response.status_code == 401
 
 
+def test_profile_rejects_expired_token(client):
+    register_test_user(client)
+
+    expired_token = create_access_token(
+        data={"sub": "senpai@example.com"},
+        expires_delta=timedelta(seconds=-1),
+    )
+
+    response = client.get(
+        "/auth/me",
+        headers={
+            "Authorization": f"Bearer {expired_token}"
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid token"
+
+
+def test_profile_rejects_tampered_token(client):
+    register_test_user(client)
+
+    valid_token = create_access_token(
+        data={"sub": "senpai@example.com"}
+    )
+
+    # Modify the token signature.
+    token_parts = valid_token.split(".")
+
+    token_parts[2] = (
+        "A" if token_parts[2][0] != "A" else "B"
+    ) + token_parts[2][1:]
+
+    tampered_token = ".".join(token_parts)
+
+    response = client.get(
+        "/auth/me",
+        headers={
+            "Authorization": f"Bearer {tampered_token}"
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid token"
+
+
 def test_profile_rejects_missing_token(client):
     response = client.get("/auth/me")
 
@@ -191,6 +239,50 @@ def test_login_rejects_wrong_password(client):
     )
 
     assert response.status_code == 401
+
+
+# --------------------------------------------------
+# REGISTRATION EDGE-CASE TESTS
+# --------------------------------------------------
+
+def test_registration_rejects_duplicate_email(client):
+    register_user(
+        client,
+        "first_user",
+        "duplicate@example.com",
+    )
+
+    response = client.post(
+        "/auth/register",
+        json={
+            "username": "second_user",
+            "email": "duplicate@example.com",
+            "password": "StrongPassword123!",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Email already registered"
+
+
+def test_registration_rejects_duplicate_username(client):
+    register_user(
+        client,
+        "duplicate_user",
+        "first@example.com",
+    )
+
+    response = client.post(
+        "/auth/register",
+        json={
+            "username": "duplicate_user",
+            "email": "second@example.com",
+            "password": "StrongPassword123!",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Username already exists"
 
 
 # --------------------------------------------------
