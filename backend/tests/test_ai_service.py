@@ -137,3 +137,88 @@ def test_gemini_unavailable_raises_service_error(ai_service):
     assert error.value.status_code == 503
     assert str(error.value) == "AI service is not available."
 
+
+# =========================================================
+# DAY 46 - AI CONTEXT BUILDER TESTS
+# =========================================================
+
+def test_system_instructions_are_returned():
+    service = AIService()
+
+    instructions = service.get_system_instructions()
+
+    assert "MiraiDesk-AI" in instructions
+    assert "friendly, accurate, and concise" in instructions
+    assert "conversation history" in instructions
+    assert "If you are uncertain" in instructions
+
+
+def test_memory_context_is_formatted():
+    service = AIService()
+
+    memory_data = {
+        "favorite_language": "Python",
+        "goal": "Become an AI Engineer",
+    }
+
+    context = service.build_memory_context(memory_data)
+
+    assert "LONG-TERM USER MEMORY:" in context
+    assert "favorite_language: Python" in context
+    assert "goal: Become an AI Engineer" in context
+
+
+def test_memory_context_handles_empty_data():
+    service = AIService()
+
+    context = service.build_memory_context({})
+
+    assert context == ""
+
+
+
+def test_conversation_context_uses_latest_ten_messages():
+    service = AIService()
+
+    history_data = [
+        {"role": "user", "content": f"Message {i}"}
+        for i in range(12)
+    ]
+
+    context = service.build_conversation_context(history_data)
+
+    assert "user: Message 0\n" not in context
+    assert "user: Message 1\n" not in context
+    assert "user: Message 2\n" in context
+    assert "user: Message 11\n" in context
+
+
+
+def test_ai_prompt_contains_all_context_sections():
+    service = AIService()
+
+    message = "Explain machine learning"
+
+    history_data = [
+        {"role": "user", "content": "I am learning Python"},
+        {"role": "assistant", "content": "That's great!"},
+    ]
+
+    memory_data = {
+        "favorite_language": "Python",
+    }
+
+    prompt = service.build_ai_prompt(
+        message=message,
+        history_data=history_data,
+        memory_data=memory_data,
+    )
+
+    assert "MiraiDesk-AI" in prompt
+    assert "LONG-TERM USER MEMORY:" in prompt
+    assert "favorite_language: Python" in prompt
+    assert "RECENT CONVERSATION:" in prompt
+    assert "user: I am learning Python" in prompt
+    assert "assistant: That's great!" in prompt
+    assert "CURRENT USER MESSAGE:" in prompt
+    assert message in prompt

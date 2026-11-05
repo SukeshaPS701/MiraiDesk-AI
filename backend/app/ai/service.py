@@ -570,6 +570,77 @@ class AIService:
             )
 
         return None
+    
+    # =========================================================
+    # AI CONTEXT PREPARATION
+    # =========================================================
+
+    def get_system_instructions(self):
+        """Return the core instructions for MiraiDesk-AI."""
+
+        return """
+You are MiraiDesk-AI, a helpful AI desktop assistant.
+
+Be friendly, accurate, and concise.
+The user may be addressed as Senpai.
+Use the supplied conversation history and long-term
+memory when relevant.
+Do not claim that you remember information unless
+it is actually present in the supplied context.
+Answer general knowledge questions normally.
+For programming questions, provide practical and
+correct explanations and code when appropriate.
+If you are uncertain, clearly say so rather than
+inventing facts.
+"""
+
+    def build_memory_context(self, memory_data):
+        """Format long-term memories for the AI prompt."""
+
+        if not memory_data:
+            return ""
+
+        memory_context = "\n\nLONG-TERM USER MEMORY:\n"
+
+        for memory_type, content in memory_data.items():
+            memory_context += f"{memory_type}: {content}\n"
+
+        return memory_context
+
+    def build_conversation_context(self, history_data):
+        """Format the latest ten conversation messages."""
+
+        conversation_context = ""
+
+        for item in history_data[-10:]:
+            role = item.get("role", "user")
+            content = item.get("content", "")
+            conversation_context += f"{role}: {content}\n"
+
+        return conversation_context
+
+    def build_ai_prompt(self, message, history_data, memory_data):
+        """Build the complete prompt sent to Gemini."""
+
+        instructions = self.get_system_instructions()
+
+        memory_context = self.build_memory_context(
+            memory_data
+        )
+
+        conversation_context = self.build_conversation_context(
+            history_data
+        )
+
+        return (
+            instructions
+            + memory_context
+            + "\n\nRECENT CONVERSATION:\n"
+            + conversation_context
+            + "\n\nCURRENT USER MESSAGE:\n"
+            + message
+        )
+
 
     # =========================================================
     # GEMINI AI RESPONSE
@@ -623,14 +694,13 @@ inventing facts.
             content = item.get("content", "")
             conversation_context += f"{role}: {content}\n"
 
-        input_text = (
-            instructions
-            + memory_context
-            + "\n\nRECENT CONVERSATION:\n"
-            + conversation_context
-            + "\n\nCURRENT USER MESSAGE:\n"
-            + message
+        
+        input_text = self.build_ai_prompt(
+            message=message,
+            history_data=history_data,
+            memory_data=memory_data,
         )
+
 
         max_attempts = 3
         transient_statuses = {429, 500, 502, 503, 504}
