@@ -222,3 +222,189 @@ def test_ai_prompt_contains_all_context_sections():
     assert "assistant: That's great!" in prompt
     assert "CURRENT USER MESSAGE:" in prompt
     assert message in prompt
+
+# =========================================================
+# DAY 47 - GEMINI INTEGRATION AND RELIABILITY TESTS
+# =========================================================
+
+def test_gemini_success_returns_generated_response(ai_service):
+    ai_service.api_key = "test-api-key"
+
+    mock_response = Mock()
+    mock_response.text = "Artificial Intelligence is fascinating."
+
+    ai_service.client = Mock()
+    ai_service.client.models.generate_content.return_value = mock_response
+
+    result = ai_service.generate_ai_response(
+        message="Explain AI",
+        history_data=[],
+        memory_data={},
+    )
+
+    assert result == "Artificial Intelligence is fascinating."
+    ai_service.client.models.generate_content.assert_called_once()
+
+
+def test_gemini_receives_correct_prompt(ai_service):
+    ai_service.api_key = "test-api-key"
+
+    mock_response = Mock()
+    mock_response.text = "Python is a programming language."
+
+    ai_service.client = Mock()
+    ai_service.client.models.generate_content.return_value = mock_response
+
+    ai_service.generate_ai_response(
+        message="Explain Python",
+        history_data=[
+            {"role": "user", "content": "I am learning coding"},
+        ],
+        memory_data={
+            "favorite_language": "Python",
+        },
+    )
+
+    call_arguments = (
+        ai_service.client.models.generate_content.call_args
+    )
+
+    sent_prompt = call_arguments.kwargs["contents"]
+
+    assert "MiraiDesk-AI" in sent_prompt
+    assert "Explain Python" in sent_prompt
+    assert "I am learning coding" in sent_prompt
+    assert "favorite_language: Python" in sent_prompt
+
+
+def test_gemini_empty_response_raises_service_error(ai_service):
+    ai_service.api_key = "test-api-key"
+
+    mock_response = Mock()
+    mock_response.text = ""
+
+    ai_service.client = Mock()
+    ai_service.client.models.generate_content.return_value = mock_response
+
+    with pytest.raises(AIServiceError) as error:
+        ai_service.generate_ai_response(
+            message="Explain AI",
+            history_data=[],
+            memory_data={},
+        )
+
+    assert error.value.status_code == 502
+    ai_service.client.models.generate_content.assert_called_once()
+
+
+def test_gemini_retries_after_temporary_failure(
+    ai_service,
+    monkeypatch,
+):
+    ai_service.api_key = "test-api-key"
+
+    class MockAPIError(Exception):
+        def __init__(self, message, status_code):
+            super().__init__(message)
+            self.status_code = status_code
+
+    mock_response = Mock()
+    mock_response.text = "Gemini recovered successfully."
+
+    ai_service.client = Mock()
+
+    ai_service.client.models.generate_content.side_effect = [
+        MockAPIError("Temporary server failure", 503),
+        mock_response,
+    ]
+
+    sleep_mock = Mock()
+    monkeypatch.setattr("app.ai.service.time.sleep", sleep_mock)
+
+    result = ai_service.generate_ai_response(
+        message="Explain machine learning",
+        history_data=[],
+        memory_data={},
+    )
+
+    assert result == "Gemini recovered successfully."
+
+    assert (
+        ai_service.client.models.generate_content.call_count == 2
+    )
+
+    sleep_mock.assert_called_once_with(1)
+
+
+def test_gemini_does_not_retry_permanent_failure(
+    ai_service,
+    monkeypatch,
+):
+    ai_service.api_key = "test-api-key"
+
+    class MockAPIError(Exception):
+        def __init__(self, message, status_code):
+            super().__init__(message)
+            self.status_code = status_code
+
+    ai_service.client = Mock()
+
+    ai_service.client.models.generate_content.side_effect = (
+        MockAPIError("Invalid request", 400)
+    )
+
+    sleep_mock = Mock()
+    monkeypatch.setattr("app.ai.service.time.sleep", sleep_mock)
+
+    with pytest.raises(AIServiceError) as error:
+        ai_service.generate_ai_response(
+            message="Explain AI",
+            history_data=[],
+            memory_data={},
+        )
+
+    assert error.value.status_code == 502
+
+    ai_service.client.models.generate_content.assert_called_once()
+    sleep_mock.assert_not_called()
+
+
+def test_gemini_retry_exhaustion_raises_service_error(
+    ai_service,
+    monkeypatch,
+):
+    ai_service.api_key = "test-api-key"
+
+    class MockAPIError(Exception):
+        def __init__(self, message, status_code):
+            super().__init__(message)
+            self.status_code = status_code
+
+    ai_service.client = Mock()
+
+    ai_service.client.models.generate_content.side_effect = [
+        MockAPIError("Server unavailable", 503),
+        MockAPIError("Server unavailable", 503),
+        MockAPIError("Server unavailable", 503),
+    ]
+
+    sleep_mock = Mock()
+    monkeypatch.setattr("app.ai.service.time.sleep", sleep_mock)
+
+    with pytest.raises(AIServiceError) as error:
+        ai_service.generate_ai_response(
+            message="Explain AI",
+            history_data=[],
+            memory_data={},
+        )
+
+    assert error.value.status_code == 503
+
+    assert (
+        ai_service.client.models.generate_content.call_count == 3
+    )
+
+    assert sleep_mock.call_count == 2
+    sleep_mock.assert_any_call(1)
+    sleep_mock.assert_any_call(2)
+
