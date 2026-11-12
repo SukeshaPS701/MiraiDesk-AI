@@ -643,6 +643,35 @@ inventing facts.
 
 
     # =========================================================
+    # AI RESPONSE VALIDATION
+    # =========================================================
+
+    def validate_ai_response(self, response):
+        """Validate and clean AI-generated response text."""
+
+        if not isinstance(response, str):
+            logger.warning(
+                "Gemini returned an invalid response type: %s",
+                type(response).__name__,
+            )
+            raise AIServiceError(
+                "The AI provider returned an invalid response.",
+                status_code=502,
+            )
+
+        cleaned_response = response.strip()
+
+        if not cleaned_response:
+            logger.warning("Gemini returned an empty response.")
+            raise AIServiceError(
+                "The AI provider returned an empty response.",
+                status_code=502,
+            )
+
+        return cleaned_response
+
+
+    # =========================================================
     # GEMINI AI RESPONSE
     # =========================================================
 
@@ -666,41 +695,11 @@ inventing facts.
                 status_code=503,
             )
 
-        instructions = """
-You are MiraiDesk-AI, a helpful AI desktop assistant.
-
-Be friendly, accurate, and concise.
-The user may be addressed as Senpai.
-Use the supplied conversation history and long-term
-memory when relevant.
-Do not claim that you remember information unless
-it is actually present in the supplied context.
-Answer general knowledge questions normally.
-For programming questions, provide practical and
-correct explanations and code when appropriate.
-If you are uncertain, clearly say so rather than
-inventing facts.
-"""
-
-        memory_context = ""
-        if memory_data:
-            memory_context = "\n\nLONG-TERM USER MEMORY:\n"
-            for memory_type, content in memory_data.items():
-                memory_context += f"{memory_type}: {content}\n"
-
-        conversation_context = ""
-        for item in history_data[-10:]:
-            role = item.get("role", "user")
-            content = item.get("content", "")
-            conversation_context += f"{role}: {content}\n"
-
-        
         input_text = self.build_ai_prompt(
             message=message,
             history_data=history_data,
             memory_data=memory_data,
         )
-
 
         max_attempts = 3
         transient_statuses = {429, 500, 502, 503, 504}
@@ -720,16 +719,9 @@ inventing facts.
                     contents=input_text,
                 )
 
-                answer = response.text
-                if answer and answer.strip():
-                    logger.info("Gemini response generated successfully.")
-                    return answer.strip()
-
-                logger.warning("Gemini returned an empty response.")
-                raise AIServiceError(
-                    "The AI provider returned an empty response.",
-                    status_code=502,
-                )
+                answer = self.validate_ai_response(response.text)
+                logger.info("Gemini response validated successfully.")
+                return answer
 
             except AIServiceError:
                 raise

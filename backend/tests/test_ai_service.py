@@ -407,4 +407,50 @@ def test_gemini_retry_exhaustion_raises_service_error(
     assert sleep_mock.call_count == 2
     sleep_mock.assert_any_call(1)
     sleep_mock.assert_any_call(2)
+    # =========================================================
+# DAY 48 - AI RESPONSE VALIDATION TESTS
+# =========================================================
+
+def test_valid_ai_response_is_returned(ai_service):
+    result = ai_service.validate_ai_response(
+        "Artificial Intelligence is fascinating."
+    )
+
+    assert result == "Artificial Intelligence is fascinating."
+
+
+def test_ai_response_removes_extra_whitespace(ai_service):
+    result = ai_service.validate_ai_response(
+        "   Hello MiraiDesk-AI!   \n"
+    )
+
+    assert result == "Hello MiraiDesk-AI!"
+
+
+def test_ai_response_rejects_none(ai_service):
+    with pytest.raises(AIServiceError) as error:
+        ai_service.validate_ai_response(None)
+
+    assert error.value.status_code == 502
+
+
+def test_ai_response_rejects_invalid_data_type(ai_service):
+    with pytest.raises(AIServiceError) as error:
+        ai_service.validate_ai_response(12345)
+
+    assert error.value.status_code == 502
+
+
+def test_ai_response_rejects_empty_string(ai_service):
+    with pytest.raises(AIServiceError) as error:
+        ai_service.validate_ai_response("")
+
+    assert error.value.status_code == 502
+
+
+def test_ai_response_rejects_whitespace_only_string(ai_service):
+    with pytest.raises(AIServiceError) as error:
+        ai_service.validate_ai_response("     \n\t  ")
+
+    assert error.value.status_code == 502
 
